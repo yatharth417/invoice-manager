@@ -75,28 +75,7 @@ def query_invoice_ollama(text, custom_prompt):
     - Be precise: invoice_date is NOT the same as due_date or service period.
     - invoice_number is the document ID, NOT a product name.
     - Extract numbers for amounts without currency symbols.
-    
-    Example output format:
-    {{
-        "invoice_number": "F2019-0006224",
-        "invoice_date": "31/07/2019",
-        "due_date": "15/08/2019",
-        "vendor_name": "ACME Corporation Ltd",
-        "vendor_address": "123 Business Street, New York, NY 10001, USA",
-        "purchase_order": "PO-12345",
-        "account_number": "ACC-789",
-        "line_items": [
-            {{
-                "description": "Web Design Services",
-                "quantity": "1",
-                "unit_price": "1500.00",
-                "amount": "1500.00"
-            }}
-        ],
-        "total_amount": "1500.00",
-        "currency": "USD"
-    }}
-    
+        
     Additional instructions: {custom_prompt}
     """
     response = ollama.chat(model="phi3:mini", messages=[
