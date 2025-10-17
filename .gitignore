@@ -1,0 +1,22 @@
+# Node / React
+node_modules/
+dist/
+build/
+.vite/
+
+# Python backend
+backend/__pycache__/
+backend/*.pyc
+backend/venv/
+.venv/
+
+# Environment files
+.env
+
+# System / Editor files
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
