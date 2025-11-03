@@ -15,7 +15,7 @@ const fields = [
   ['currency','Currency'],
 ];
 
-export default function InvoiceForm({ invoice }) {
+export default function InvoiceForm({ invoice, onFileSelect }) {
   const { update } = useInvoices();
   const [form, setForm] = useState(()=> ({ ...fields.reduce((a,[k]) => ({...a, [k]: invoice.data?.[k] || ''}), {} ) }));
   const [saving, setSaving] = useState(false);
@@ -41,9 +41,16 @@ export default function InvoiceForm({ invoice }) {
     if (file && file.type === 'application/pdf') {
       setSelectedFile(file);
       setExtractError(null);
+      // Notify parent component about the selected file
+      if (onFileSelect) {
+        onFileSelect(file);
+      }
     } else if (file) {
       setExtractError('Please select a PDF file');
       setSelectedFile(null);
+      if (onFileSelect) {
+        onFileSelect(null);
+      }
     }
   }
 
