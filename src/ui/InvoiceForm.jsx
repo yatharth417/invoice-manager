@@ -15,13 +15,12 @@ const fields = [
   ['currency','Currency'],
 ];
 
-export default function InvoiceForm({ invoice, onFileSelect }) {
+export default function InvoiceForm({ invoice }) {
   const { update } = useInvoices();
   const [form, setForm] = useState(()=> ({ ...fields.reduce((a,[k]) => ({...a, [k]: invoice.data?.[k] || ''}), {} ) }));
   const [saving, setSaving] = useState(false);
   const [extracting, setExtracting] = useState(false);
   const [extractError, setExtractError] = useState(null);
-  const [selectedFile, setSelectedFile] = useState(null);
 
   function handleChange(e) {
     const { name, value } = e.target;
@@ -36,27 +35,9 @@ export default function InvoiceForm({ invoice, onFileSelect }) {
     }, 400);
   }
 
-  function handleFileSelect(e) {
-    const file = e.target.files[0];
-    if (file && file.type === 'application/pdf') {
-      setSelectedFile(file);
-      setExtractError(null);
-      // Notify parent component about the selected file
-      if (onFileSelect) {
-        onFileSelect(file);
-      }
-    } else if (file) {
-      setExtractError('Please select a PDF file');
-      setSelectedFile(null);
-      if (onFileSelect) {
-        onFileSelect(null);
-      }
-    }
-  }
-
   async function handleExtract() {
-    if (!selectedFile) {
-      setExtractError('Please select a PDF file first');
+    if (!invoice.pdfFile) {
+      setExtractError('No PDF file found. Please upload a PDF from the dashboard first.');
       return;
     }
 
@@ -64,7 +45,7 @@ export default function InvoiceForm({ invoice, onFileSelect }) {
     setExtractError(null);
 
     try {
-      const result = await extractInvoice(selectedFile);
+      const result = await extractInvoice(invoice.pdfFile);
       
       // Map API response to form fields
       const extractedData = {
@@ -95,7 +76,7 @@ export default function InvoiceForm({ invoice, onFileSelect }) {
 
   return (
     <div className="form-panel">
-      {/* PDF Upload Section */}
+      {/* PDF Info & Extract Section */}
       <div style={{ 
         marginBottom: '1.5rem', 
         padding: '1rem', 
@@ -106,28 +87,43 @@ export default function InvoiceForm({ invoice, onFileSelect }) {
         <h3 style={{ margin: '0 0 0.75rem 0', fontSize: '0.9rem', fontWeight: '600', color: '#334155' }}>
           Extract from PDF
         </h3>
-        <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
-          <input
-            type="file"
-            accept="application/pdf"
-            onChange={handleFileSelect}
-            disabled={extracting}
-            style={{ flex: '1', minWidth: '200px' }}
-          />
-          <button 
-            className="button primary" 
-            onClick={handleExtract}
-            disabled={!selectedFile || extracting}
-            style={{ whiteSpace: 'nowrap' }}
-          >
-            {extracting ? 'Extracting...' : '🔍 Extract Data'}
-          </button>
-        </div>
-        {selectedFile && (
-          <div style={{ marginTop: '0.5rem', fontSize: '0.875rem', color: '#64748b' }}>
-            Selected: {selectedFile.name}
+        
+        {invoice.pdfFile ? (
+          <div style={{ 
+            marginBottom: '0.75rem', 
+            padding: '0.5rem', 
+            backgroundColor: '#dcfce7', 
+            border: '1px solid #86efac',
+            borderRadius: '0.375rem',
+            fontSize: '0.875rem',
+            color: '#15803d',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center'
+          }}>
+            <span>✓ PDF loaded: <strong>{invoice.file}</strong></span>
+            <button 
+              className="button primary" 
+              onClick={handleExtract}
+              disabled={extracting}
+              style={{ whiteSpace: 'nowrap', marginLeft: '1rem' }}
+            >
+              {extracting ? 'Extracting...' : '🔍 Extract Data'}
+            </button>
+          </div>
+        ) : (
+          <div style={{ 
+            padding: '0.75rem', 
+            backgroundColor: '#fef3c7', 
+            border: '1px solid #fde047',
+            borderRadius: '0.375rem',
+            fontSize: '0.875rem',
+            color: '#92400e'
+          }}>
+            No PDF uploaded yet. Please upload a PDF from the dashboard first.
           </div>
         )}
+        
         {extractError && (
           <div style={{
             marginTop: '0.75rem',
