@@ -10,8 +10,7 @@ export default function useInvoices() {
     return [];
   });
 
-  const pdfFilesRef = useRef(pdfFilesStorage);
-  const [, forceUpdate] = useState({});
+  const [pdfFiles, setPdfFiles] = useState(pdfFilesStorage);
 
   useEffect(()=>{ localStorage.setItem(KEY, JSON.stringify(invoices)); }, [invoices]);
 
@@ -27,6 +26,9 @@ export default function useInvoices() {
       newId = prev.length > 0 ? Math.max(...prev.map(i => i.id)) + 1 : 1;
       const now = new Date().toISOString().slice(0,16).replace('T',' ');
       
+      // Create a blob URL for runtime preview (not persisted across reloads)
+      const fileUrl = pdfFile ? URL.createObjectURL(pdfFile) : '';
+
       newInvoice = {
         id: newId,
         caseName: invoiceData.caseName || 'Unnamed Invoice',
@@ -35,6 +37,7 @@ export default function useInvoices() {
         modifiedAt: now,
         status: 'Pending',
         file: invoiceData.file || '',
+        fileUrl,
         data: {}
       };
       
@@ -42,8 +45,10 @@ export default function useInvoices() {
     });
     
     if (pdfFile && newId) {
+      // Store the File in module-level storage so all hook instances can access it
       pdfFilesStorage[newId] = pdfFile;
-      pdfFilesRef.current[newId] = pdfFile;
+      // Update local state for components using this hook instance
+      setPdfFiles({ ...pdfFilesStorage });
     }
     
     return newId;
@@ -53,11 +58,12 @@ export default function useInvoices() {
     setInvoices(list => list.filter(inv => inv.id !== id));
     // Also remove PDF file from storage
     delete pdfFilesStorage[id];
-    delete pdfFilesRef.current[id];
+    setPdfFiles({...pdfFilesStorage});
   }, []);
 
   const getById = useCallback((id) => {
     const invoice = invoices.find(i => i.id === id);
+    // Always read the latest from module-level storage to avoid stale state across hook instances
     const pdfFile = pdfFilesStorage[id];
     if (invoice && pdfFile) {
       return { ...invoice, pdfFile };

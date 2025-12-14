@@ -36,7 +36,20 @@ export default function InvoiceForm({ invoice }) {
   }
 
   async function handleExtract() {
-    if (!invoice.pdfFile) {
+    let sourceFile = invoice.pdfFile;
+    // Fallback: if pdfFile missing but we have a blob URL, fetch and reconstruct a File
+    if (!sourceFile && invoice.fileUrl) {
+      try {
+        const res = await fetch(invoice.fileUrl);
+        const blob = await res.blob();
+        sourceFile = new File([blob], invoice.file || 'invoice.pdf', { type: blob.type || 'application/pdf' });
+      } catch (e) {
+        setExtractError('Could not access PDF from preview URL. Please re-upload from the dashboard.');
+        return;
+      }
+    }
+
+    if (!sourceFile) {
       setExtractError('No PDF file found. Please upload a PDF from the dashboard first.');
       return;
     }
@@ -45,7 +58,7 @@ export default function InvoiceForm({ invoice }) {
     setExtractError(null);
 
     try {
-      const result = await extractInvoice(invoice.pdfFile);
+      const result = await extractInvoice(sourceFile);
       
       // Map API response to form fields
       const extractedData = {
@@ -88,7 +101,7 @@ export default function InvoiceForm({ invoice }) {
           Extract from PDF
         </h3>
         
-        {invoice.pdfFile ? (
+        {invoice.pdfFile || invoice.fileUrl ? (
           <div style={{ 
             marginBottom: '0.75rem', 
             padding: '0.5rem', 
@@ -101,7 +114,7 @@ export default function InvoiceForm({ invoice }) {
             justifyContent: 'space-between',
             alignItems: 'center'
           }}>
-            <span>✓ PDF loaded: <strong>{invoice.file}</strong></span>
+            <span>✓ PDF ready: <strong>{invoice.file}</strong></span>
             <button 
               className="button primary" 
               onClick={handleExtract}
