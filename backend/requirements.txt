@@ -2,3 +2,4 @@ fastapi
 uvicorn
 pdfplumber
 ollama
+python-multipart

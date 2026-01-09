@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import useInvoices from '../store/useInvoices.js';
 import { extractInvoice } from '../services/api.js';
 
 const fields = [
@@ -15,8 +14,7 @@ const fields = [
   ['currency','Currency'],
 ];
 
-export default function InvoiceForm({ invoice }) {
-  const { update } = useInvoices();
+export default function InvoiceForm({ invoice, update }) {
   const [form, setForm] = useState(()=> ({ ...fields.reduce((a,[k]) => ({...a, [k]: invoice.data?.[k] || ''}), {} ) }));
   const [saving, setSaving] = useState(false);
   const [extracting, setExtracting] = useState(false);
@@ -61,21 +59,39 @@ export default function InvoiceForm({ invoice }) {
       const result = await extractInvoice(sourceFile);
       
       // Map API response to form fields
-      const extractedData = {
-        invoiceNumber: result.invoice_number || '',
-        invoiceDate: result.invoice_date || '',
-        dueDate: result.due_date || '',
-        vendor: result.vendor_name || '',
-        vendorAddress: result.vendor_address || '',
-        purchaseOrder: result.purchase_order || '',
-        accountNumber: result.account_number || '',
-        lineItems: result.line_items ? (typeof result.line_items === 'string' ? result.line_items : JSON.stringify(result.line_items, null, 2)) : '',
-        total: result.total_amount || '',
-        currency: result.currency || '',
+      const toText = (v) => {
+        if (v === null || v === undefined) return '';
+        if (typeof v === 'string') return v;
+        if (typeof v === 'number') return String(v);
+        try { return JSON.stringify(v); } catch { return String(v); }
       };
+
+      const extractedData = {
+        invoiceNumber: toText(result.invoice_number),
+        invoiceDate: toText(result.invoice_date),
+        dueDate: toText(result.due_date),
+        vendor: toText(result.vendor_name),
+        vendorAddress: toText(result.vendor_address),
+        purchaseOrder: toText(result.purchase_order),
+        accountNumber: toText(result.account_number),
+        lineItems: result.line_items ? (typeof result.line_items === 'string' ? result.line_items : JSON.stringify(result.line_items, null, 2)) : '',
+        total: toText(result.total_amount),
+        currency: toText(result.currency),
+      };
+
+      // Capture bounding boxes if backend provides them
+      const extractedBoxes = result.boxes || result.bounding_boxes || result.regions || [];
 
       setForm(extractedData);
       setExtractError(null);
+
+      // Persist extracted data and boxes to store so preview can render boxes
+      // Debug: surface boxes in console for quick verification
+      if (result.boxes) {
+        // eslint-disable-next-line no-console
+        console.log('extract boxes', result.boxes.length, result.boxes.slice(0,3));
+      }
+      update(invoice.id, { data: extractedData, boxes: extractedBoxes });
       
       // Show success message
       alert(`Invoice extracted successfully in ${result.execution_time_seconds}s! Review and save the data.`);

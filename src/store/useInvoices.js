@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, useRef } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 const KEY = 'invoice-demo-data-v1';
 const pdfFilesStorage = {}; // Global storage for PDF files
@@ -38,7 +38,8 @@ export default function useInvoices() {
         status: 'Pending',
         file: invoiceData.file || '',
         fileUrl,
-        data: {}
+        data: {},
+        boxes: []
       };
       
       return [...prev, newInvoice];

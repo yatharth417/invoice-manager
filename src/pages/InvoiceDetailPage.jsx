@@ -6,7 +6,7 @@ import InvoicePreview from '../ui/InvoicePreview.jsx';
 export default function InvoiceDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { getById } = useInvoices();
+  const { getById, update } = useInvoices();
   const invoice = getById(Number(id));
 
   if(!invoice) return <div style={{padding:40}}>Invoice not found. <button onClick={()=>navigate('/invoices')}>Back</button></div>;
@@ -32,7 +32,7 @@ export default function InvoiceDetailPage() {
       </div>
       <div className="detail-layout">
         <InvoicePreview invoice={invoice} pdfFile={invoice.pdfFile || null} />
-        <InvoiceForm invoice={invoice} />
+        <InvoiceForm invoice={invoice} update={update} />
       </div>
     </div>
   );
