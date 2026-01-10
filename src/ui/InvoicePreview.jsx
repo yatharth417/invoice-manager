@@ -7,13 +7,16 @@ import pdfjsWorker from 'pdfjs-dist/build/pdf.worker.mjs?url';
 // { field: 'invoiceNumber', x: 0.1, y: 0.2, width: 0.3, height: 0.05, page: 1, normalized: true }
 // Coordinates are assumed normalized (0-1) relative to page width/height.
 
-export default function InvoicePreview({ invoice, pdfFile }) {
+export default function InvoicePreview({ invoice, pdfFile, selectedField, onFieldSelect }) {
   const [pdfUrl, setPdfUrl] = useState(null);
   const [pageSize, setPageSize] = useState({ width: 0, height: 0 });
   const [boxes, setBoxes] = useState([]);
   const [showBoxes, setShowBoxes] = useState(true);
   const [scale, setScale] = useState(1);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(0);
   const canvasRef = useRef(null);
+  const pdfDocRef = useRef(null);
 
   useEffect(() => {
     // Prefer invoice.fileUrl if available (created at upload time)
@@ -35,18 +38,39 @@ export default function InvoicePreview({ invoice, pdfFile }) {
     setBoxes(invoice?.boxes || []);
   }, [invoice?.boxes]);
 
-  // Render first page of PDF into canvas using pdf.js
+  // Load PDF document and get total pages
   useEffect(() => {
     let cancelled = false;
-    async function render() {
-      if (!pdfUrl || !canvasRef.current) return;
+    async function loadPdf() {
+      if (!pdfUrl) return;
       try {
-        // Configure worker to local bundle to avoid CDN/version mismatch
         pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
         const loadingTask = pdfjsLib.getDocument(pdfUrl);
         const pdf = await loadingTask.promise;
         if (cancelled) return;
-        const page = await pdf.getPage(1);
+        pdfDocRef.current = pdf;
+        setTotalPages(pdf.numPages);
+        setCurrentPage(1);
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.error('PDF load error', err);
+      }
+    }
+    loadPdf();
+    return () => { 
+      cancelled = true;
+      pdfDocRef.current = null;
+    };
+  }, [pdfUrl]);
+
+  // Render current page of PDF into canvas
+  useEffect(() => {
+    let cancelled = false;
+    async function renderPage() {
+      if (!pdfDocRef.current || !canvasRef.current || !currentPage) return;
+      try {
+        const page = await pdfDocRef.current.getPage(currentPage);
+        if (cancelled) return;
         const viewport = page.getViewport({ scale: 1.5 });
         const canvas = canvasRef.current;
         const context = canvas.getContext('2d');
@@ -59,9 +83,9 @@ export default function InvoicePreview({ invoice, pdfFile }) {
         console.error('PDF render error', err);
       }
     }
-    render();
+    renderPage();
     return () => { cancelled = true; };
-  }, [pdfUrl]);
+  }, [currentPage, totalPages]);
 
   // Recompute scale of displayed canvas vs intrinsic page size
   useEffect(() => {
@@ -98,6 +122,14 @@ export default function InvoicePreview({ invoice, pdfFile }) {
                   <input type="checkbox" checked={showBoxes} onChange={e=>setShowBoxes(e.target.checked)} />
                   Show
                 </label>
+                {totalPages > 1 && (
+                  <>
+                    <span style={{ fontSize: 12, color: '#94a3b8', marginLeft: '0.5rem' }}>|</span>
+                    <span style={{ fontSize: 12, color: '#64748b', fontWeight: 600 }}>
+                      Page {currentPage} / {totalPages}
+                    </span>
+                  </>
+                )}
               </div>
             </div>
             <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#ffffff', position:'relative', overflow:'auto' }}>
@@ -112,6 +144,91 @@ export default function InvoicePreview({ invoice, pdfFile }) {
                     background: '#fff'
                   }}
                 />
+                {/* Navigation arrows for multi-page PDFs */}
+                {totalPages > 1 && (
+                  <>
+                    <button
+                      onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                      disabled={currentPage === 1}
+                      style={{
+                        position: 'absolute',
+                        left: '10px',
+                        top: '50%',
+                        transform: 'translateY(-50%)',
+                        width: '40px',
+                        height: '40px',
+                        borderRadius: '50%',
+                        border: 'none',
+                        backgroundColor: currentPage === 1 ? '#e2e8f0' : '#3b82f6',
+                        color: currentPage === 1 ? '#94a3b8' : '#ffffff',
+                        cursor: currentPage === 1 ? 'not-allowed' : 'pointer',
+                        fontSize: '18px',
+                        fontWeight: 'bold',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+                        transition: 'all 0.2s ease',
+                        opacity: currentPage === 1 ? 0.5 : 1,
+                        zIndex: 10
+                      }}
+                      onMouseEnter={(e) => {
+                        if (currentPage > 1) {
+                          e.currentTarget.style.backgroundColor = '#2563eb';
+                          e.currentTarget.style.transform = 'translateY(-50%) scale(1.1)';
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        if (currentPage > 1) {
+                          e.currentTarget.style.backgroundColor = '#3b82f6';
+                          e.currentTarget.style.transform = 'translateY(-50%) scale(1)';
+                        }
+                      }}
+                    >
+                      ‹
+                    </button>
+                    <button
+                      onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                      disabled={currentPage === totalPages}
+                      style={{
+                        position: 'absolute',
+                        right: '10px',
+                        top: '50%',
+                        transform: 'translateY(-50%)',
+                        width: '40px',
+                        height: '40px',
+                        borderRadius: '50%',
+                        border: 'none',
+                        backgroundColor: currentPage === totalPages ? '#e2e8f0' : '#3b82f6',
+                        color: currentPage === totalPages ? '#94a3b8' : '#ffffff',
+                        cursor: currentPage === totalPages ? 'not-allowed' : 'pointer',
+                        fontSize: '18px',
+                        fontWeight: 'bold',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+                        transition: 'all 0.2s ease',
+                        opacity: currentPage === totalPages ? 0.5 : 1,
+                        zIndex: 10
+                      }}
+                      onMouseEnter={(e) => {
+                        if (currentPage < totalPages) {
+                          e.currentTarget.style.backgroundColor = '#2563eb';
+                          e.currentTarget.style.transform = 'translateY(-50%) scale(1.1)';
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        if (currentPage < totalPages) {
+                          e.currentTarget.style.backgroundColor = '#3b82f6';
+                          e.currentTarget.style.transform = 'translateY(-50%) scale(1)';
+                        }
+                      }}
+                    >
+                      ›
+                    </button>
+                  </>
+                )}
                 {/* Overlay layer for backend-provided bounding boxes */}
                 {showBoxes && pageSize.width > 0 && pageSize.height > 0 && (
                   <div
@@ -133,20 +250,24 @@ export default function InvoicePreview({ invoice, pdfFile }) {
                       const pxHeight = normalized ? box.height * pageSize.height : box.height;
                       const pxLeft = normalized ? box.x * pageSize.width : box.x;
                       const pxTop = normalized ? box.y * pageSize.height : box.y;
+                      const isSelected = selectedField === box.field;
                       return (
                         <div
                           key={box.id || idx}
+                          onClick={() => onFieldSelect && onFieldSelect(box.field)}
                           style={{
                             position:'absolute',
                             left: `${pxLeft}px`,
                             top: `${pxTop}px`,
                             width: `${pxWidth}px`,
                             height: `${pxHeight}px`,
-                            border:'2px solid #3b82f6',
-                            background:'rgba(59,130,246,0.12)',
+                            border: isSelected ? '3px solid #10b981' : '2px solid #3b82f6',
+                            background: isSelected ? 'rgba(16,185,129,0.2)' : 'rgba(59,130,246,0.12)',
                             borderRadius:4,
-                            boxShadow:'0 4px 12px rgba(0,0,0,0.08)',
-                            pointerEvents:'none'
+                            boxShadow: isSelected ? '0 0 0 3px rgba(16,185,129,0.3)' : '0 4px 12px rgba(0,0,0,0.08)',
+                            pointerEvents:'auto',
+                            cursor: 'pointer',
+                            transition: 'all 0.15s ease'
                           }}
                         >
                           {box.field && (

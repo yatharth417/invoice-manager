@@ -1,4 +1,5 @@
 import { useParams, useNavigate } from 'react-router-dom';
+import { useState } from 'react';
 import useInvoices from '../store/useInvoices.js';
 import InvoiceForm from '../ui/InvoiceForm.jsx';
 import InvoicePreview from '../ui/InvoicePreview.jsx';
@@ -8,6 +9,7 @@ export default function InvoiceDetailPage() {
   const navigate = useNavigate();
   const { getById, update } = useInvoices();
   const invoice = getById(Number(id));
+  const [selectedField, setSelectedField] = useState(null);
 
   if(!invoice) return <div style={{padding:40}}>Invoice not found. <button onClick={()=>navigate('/invoices')}>Back</button></div>;
 
@@ -31,8 +33,8 @@ export default function InvoiceDetailPage() {
         <span style={{ marginLeft: 8 }}>pdfFile={invoice.pdfFile ? 'yes' : 'no'}</span>
       </div>
       <div className="detail-layout">
-        <InvoicePreview invoice={invoice} pdfFile={invoice.pdfFile || null} />
-        <InvoiceForm invoice={invoice} update={update} />
+        <InvoicePreview invoice={invoice} pdfFile={invoice.pdfFile || null} selectedField={selectedField} onFieldSelect={setSelectedField} />
+        <InvoiceForm invoice={invoice} update={update} selectedField={selectedField} />
       </div>
     </div>
   );

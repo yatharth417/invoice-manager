@@ -395,6 +395,7 @@ app.add_middleware(
 ) 
 
 def query_invoice_ollama(text, custom_prompt):
+    safe_text = text[:12000]
     system_prompt = f"""
     You are an expert invoice parser. 
     Given the text of an invoice, extract ALL key details and return them as JSON.
@@ -452,11 +453,27 @@ def query_invoice_ollama(text, custom_prompt):
         
     Additional instructions: {custom_prompt}
     """
-    response = ollama.chat(model="mistral:7b", messages=[
-        {"role": "system", "content": system_prompt},
-        {"role": "user", "content": text}
-    ])
-    return response['message']['content']
+
+    try:
+        response = ollama.chat(
+            model="mistral:7b", 
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": safe_text}
+            ],
+            format=json,
+
+            options={
+                "num_ctx" :4096,
+                "temperature":0.1,
+                "num_predict":1000,
+            },
+            keep_alive="5m"
+        )
+        return response['message']['content']
+    except Exception as e:
+        print(f"Ollama Error: {e}")
+        return"{}"
 
 
 def clean_llm_extraction(fields, pdf_text):
@@ -579,7 +596,7 @@ async def extract_invoice(
         except Exception as e:
             parsed_result = {"raw_output": result, "parse_error": str(e)}
 
-        #  CLEAN UP LLM OUTPUT before finding boxes
+        # 👇 CLEAN UP LLM OUTPUT before finding boxes
         if "parse_error" not in parsed_result:
             parsed_result = clean_llm_extraction(parsed_result, text)
 

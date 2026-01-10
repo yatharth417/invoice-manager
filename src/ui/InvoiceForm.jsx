@@ -14,7 +14,7 @@ const fields = [
   ['currency','Currency'],
 ];
 
-export default function InvoiceForm({ invoice, update }) {
+export default function InvoiceForm({ invoice, update, selectedField }) {
   const [form, setForm] = useState(()=> ({ ...fields.reduce((a,[k]) => ({...a, [k]: invoice.data?.[k] || ''}), {} ) }));
   const [saving, setSaving] = useState(false);
   const [extracting, setExtracting] = useState(false);
@@ -169,16 +169,34 @@ export default function InvoiceForm({ invoice, update }) {
       </div>
 
       <div className="form-grid">
-        {fields.map(([name,label,type]) => (
-          <div className="field" key={name} style={type==='textarea'?{gridColumn:'1/-1'}:undefined}>
-            <label htmlFor={name}>{label}</label>
-            {type==='textarea' ? (
-              <textarea id={name} name={name} value={form[name]} onChange={handleChange} />
-            ) : (
-              <input id={name} name={name} value={form[name]} onChange={handleChange} />
-            )}
-          </div>
-        ))}
+        {fields.map(([name,label,type]) => {
+          const isSelected = selectedField === name;
+          return (
+            <div 
+              className="field" 
+              key={name} 
+              style={{
+                ...(type==='textarea'?{gridColumn:'1/-1'}:{}),
+                transition: 'all 0.2s ease',
+                ...(isSelected ? {
+                  backgroundColor: '#d1fae5',
+                  padding: '0.75rem',
+                  margin: '-0.5rem',
+                  borderRadius: '0.5rem',
+                  border: '2px solid #10b981',
+                  boxShadow: '0 0 0 3px rgba(16,185,129,0.2)'
+                } : {})
+              }}
+            >
+              <label htmlFor={name}>{label}</label>
+              {type==='textarea' ? (
+                <textarea id={name} name={name} value={form[name]} onChange={handleChange} />
+              ) : (
+                <input id={name} name={name} value={form[name]} onChange={handleChange} />
+              )}
+            </div>
+          );
+        })}
       </div>
       <div className="actions-row">
         <button className="button" onClick={()=>setForm(fields.reduce((a,[k])=>({...a, [k]:''}), {}))}>Reset</button>
