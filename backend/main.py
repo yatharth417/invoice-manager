@@ -72,12 +72,13 @@ def _normalize_for_compare(text: str) -> str:
 
 def find_address_tokens(words, address_text):
     """
-    Find address tokens - filters by X position to avoid spanning entire page width.
-    Only keeps tokens within 200px of the leftmost address token.
+    Find address tokens with noise filtering, horizontal filtering, and vertical clustering.
+    Filters tokens <3 chars, keeps tokens near median X, clusters by vertical proximity (<50px), returns largest cluster.
     """
     import re
     
-    address_parts = [p for p in re.findall(r'\S+', address_text) if len(p) > 1]
+    # Filter noise: only keep address parts with 3+ characters
+    address_parts = [p for p in re.findall(r'\S+', address_text) if len(p) > 2]
     
     if not address_parts:
         return []
@@ -86,28 +87,68 @@ def find_address_tokens(words, address_text):
     
     for word in words:
         word_text = word['text'].strip()
+        
+        # Filter noise: ignore tokens shorter than 3 characters
+        if len(word_text) <= 2:
+            continue
+            
         for part in address_parts:
-            if len(part) >= 2 and (part.lower() in word_text.lower() or word_text.lower() in part.lower()):
+            if part.lower() in word_text.lower() or word_text.lower() in part.lower():
                 candidate_tokens.append(word)
                 break
     
     if not candidate_tokens:
         return []
     
-    # Sort by position (top to bottom, left to right)
-    candidate_tokens.sort(key=lambda w: (w['top'], w['x0']))
+    # Horizontal filtering: calculate median X and discard outliers
+    x_positions = sorted([t['x0'] for t in candidate_tokens])
+    n = len(x_positions)
     
-    # Find the leftmost X position
-    min_x = min(t['x0'] for t in candidate_tokens)
+    if n % 2 == 0:
+        median_x = (x_positions[n // 2 - 1] + x_positions[n // 2]) / 2
+    else:
+        median_x = x_positions[n // 2]
     
-    # Only keep tokens within 200px of the leftmost position
-    # (this filters out tokens on the right side of the page)
-    filtered = [
-        t for t in candidate_tokens 
-        if t['x0'] - min_x < 200
+    # Keep only tokens within 150px of median X
+    horizontally_filtered = [
+        t for t in candidate_tokens
+        if abs(t['x0'] - median_x) <= 150
     ]
     
-    return filtered[:8]
+    if not horizontally_filtered:
+        return []
+    
+    # Sort by position (top to bottom, left to right)
+    horizontally_filtered.sort(key=lambda w: (w['top'], w['x0']))
+    
+    # Vertical clustering: group tokens with <50px vertical gap
+    clusters = []
+    current_cluster = [horizontally_filtered[0]]
+    
+    for i in range(1, len(horizontally_filtered)):
+        prev_token = horizontally_filtered[i - 1]
+        curr_token = horizontally_filtered[i]
+        
+        # Calculate vertical gap
+        vertical_gap = curr_token['top'] - prev_token['top']
+        
+        if vertical_gap > 50:
+            # Start new cluster
+            clusters.append(current_cluster)
+            current_cluster = [curr_token]
+        else:
+            # Add to current cluster
+            current_cluster.append(curr_token)
+    
+    # Don't forget the last cluster
+    clusters.append(current_cluster)
+    
+    # Selection: return the largest cluster (most words)
+    if clusters:
+        largest_cluster = max(clusters, key=len)
+        return largest_cluster
+    
+    return []
 
 
 def find_boxes_for_fields(parsed_result, pages):
@@ -395,7 +436,8 @@ app.add_middleware(
 ) 
 
 def query_invoice_ollama(text, custom_prompt):
-    safe_text = text[:12000]
+    safe_text = text[:10000]
+    print(f"🔍 Ollama input: {len(safe_text)} chars (truncated from {len(text)})", flush=True)
     system_prompt = f"""
     You are an expert invoice parser. 
     Given the text of an invoice, extract ALL key details and return them as JSON.
@@ -454,26 +496,21 @@ def query_invoice_ollama(text, custom_prompt):
     Additional instructions: {custom_prompt}
     """
 
-    try:
-        response = ollama.chat(
-            model="mistral:7b", 
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": safe_text}
-            ],
-            format=json,
-
-            options={
-                "num_ctx" :4096,
-                "temperature":0.1,
-                "num_predict":1000,
-            },
-            keep_alive="5m"
-        )
-        return response['message']['content']
-    except Exception as e:
-        print(f"Ollama Error: {e}")
-        return"{}"
+    response = ollama.chat(
+        model="qwen2.5:3b", 
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": safe_text}
+        ],
+        format="json",        # <--- Forces valid JSON (prevents "I can't do that" chat responses)
+        keep_alive="5m",      # <--- Keeps model loaded so 2nd invoice is fast
+        options={
+            "num_ctx": 4096,     # <--- CRITICAL: Doubles memory capacity
+            "temperature": 0.1,  # <--- CRITICAL: Forces factual/consistent extraction
+            "num_predict": 1000  # <--- CRITICAL: Prevents cutting off halfway
+        }
+    )
+    return response['message']['content']
 
 
 def clean_llm_extraction(fields, pdf_text):
@@ -572,14 +609,24 @@ async def extract_invoice(
     custom_prompt: str = Form("Extract all invoice fields including invoice number, date, due date, vendor name and address, purchase order, account number, line items, total amount, and currency.")
 ):
     start_time = time.time()
+    print(f"\n{'='*60}", flush=True)
+    print(f"📄 NEW EXTRACTION REQUEST", flush=True)
+    print(f"{'='*60}", flush=True)
     
     with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
         tmp.write(await file.read())
         tmp_path = tmp.name
         
     try:
+        print(f"📂 Extracting text from PDF: {tmp_path}", flush=True)
         text, pages = extract_pdf_content(tmp_path)
+        print(f"✅ Extracted {len(text)} characters from {len(pages)} pages", flush=True)
+        print(f"📝 First 200 chars: {text[:200]}", flush=True)
+        
+        print(f"🤖 Calling Ollama with mistral:7b...", flush=True)
         result = query_invoice_ollama(text, custom_prompt)
+        print(f"✅ Ollama returned {len(result)} characters", flush=True)
+        print(f"📝 Raw result: {result[:500]}", flush=True)
         
         # Clean up the result - remove markdown code blocks if present
         cleaned_result = result.strip()
@@ -591,9 +638,13 @@ async def extract_invoice(
             cleaned_result = cleaned_result[:-3]
         cleaned_result = cleaned_result.strip()
         
+        print(f"🧹 Cleaned result: {cleaned_result[:500]}", flush=True)
+        
         try: 
             parsed_result = json.loads(cleaned_result)
+            print(f"✅ JSON parsed successfully. Fields: {list(parsed_result.keys())}", flush=True)
         except Exception as e:
+            print(f"❌ JSON parse error: {e}", flush=True)
             parsed_result = {"raw_output": result, "parse_error": str(e)}
 
         # 👇 CLEAN UP LLM OUTPUT before finding boxes
